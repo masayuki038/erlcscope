@@ -14,19 +14,21 @@ start_link()->
 	{ok,Pid}.
 
 main(InPath)->
-	case filelib:is_regular(filename:join(InPath, ?INPUT_FILE)) of
+    InputFilePath = filename:join(InPath, ?INPUT_FILE),
+	case filelib:is_regular(InputFilePath) of
 	 	true->	
-			io:format("Using source files from ~s~n",[?INPUT_FILE]),
-			{ok, Data} = file:read_file(?INPUT_FILE),
+			io:format("Using source files from ~s~n",[InputFilePath]),
+			{ok, Data} = file:read_file(InputFilePath),
 	 		Files = lists:sort(string:tokens(binary_to_list(Data), ?NEWLINE_SEP));
 		false ->
 			io:format("Searching for source files ...~n"),
 			Files = find_source_files(InPath),
-			{ok, FilesFd} = file:open(?INPUT_FILE, [write]),
+			{ok, FilesFd} = file:open(InputFilePath, [write]),
 			lists:foreach(fun(File) -> io:format(FilesFd, "~s~n", [File]) end, Files),
 			file:close(FilesFd)
 	end,
-	{ok, Db} = file:open(?OUTPUT_FILE,[write]),
+    OutputFilePath = filename:join(InPath, ?OUTPUT_FILE),
+	{ok, Db} = file:open(OutputFilePath,[write]),
 	init_symbol_db(Db,0),
 	Sched = erlang:system_info(schedulers),
 	Entries = pmap_lim(fun(Fname) ->
@@ -35,7 +37,7 @@ main(InPath)->
 		end, 
 	Files, Sched),
 	lists:foreach(fun(E) -> file:write(Db, E) end, Entries),
-	write_symbol_trailer_to_db(Db, Files),
+	write_symbol_trailer_to_db(Db, Files, OutputFilePath),
 	io:format("Processed ~b files~n", [length(Files)])
 	.
 
@@ -274,13 +276,13 @@ write_symbol_to_db(Type, "", _Node, S=#state{entries = Entries}) ->
 write_symbol_to_db(_Type, _Name, _Node, S=#state{}) ->
 	S.
 
-write_symbol_trailer_to_db(Db,Files) ->
+write_symbol_trailer_to_db(Db,Files,OutputFilePath) ->
    	io:format(Db, "~s~n", [?SYMBOL_END]),
-	TrailerOffset = filelib:file_size(?OUTPUT_FILE),
+	TrailerOffset = filelib:file_size(OutputFilePath),
 	io:format(Db, "1~n.~n0~n~p~n~p~n", [length(Files), lists:flatlength(Files) + length(Files)]),
 	lists:foreach(fun(Fname) -> io:format(Db,"~s~n",[Fname]) end, Files),
 	file:close(Db),
-	{ok , Db2} = file:open(?OUTPUT_FILE, [read,write]),
+	{ok , Db2} = file:open(OutputFilePath, [read,write]),
 	%io:format("Trailer offset ~b",[TrailerOffset]),
 	init_symbol_db(Db2, TrailerOffset),
 	file:close(Db2).
